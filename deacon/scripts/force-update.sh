@@ -1,5 +1,4 @@
 #!/bin/bash
-# Force immediate plugin update
-
-curl -X POST http://localhost:8080/update-plugins
-echo "Plugin update triggered"
+# Trigger immediate OpenClaw upgrade across all instances
+curl -s -X POST http://localhost:8080/upgrade
+echo "Upgrade triggered"

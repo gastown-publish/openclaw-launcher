@@ -1,68 +1,30 @@
-# OpenClaw Launcher - Deacon Service
-# Plugin management, monitoring, and maintenance daemon
+FROM python:3.12-slim
 
-FROM python:3.11-slim
-
-LABEL maintainer="OpenClaw Team <team@openclaw.dev>"
-LABEL service="deacon"
-LABEL version="1.0.0"
-
-# Prevent Python from writing pyc files and buffering stdout
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Deacon configuration
-ENV DEACON_HOME=/opt/deacon
-ENV DEACON_DATA=/var/lib/deacon
-ENV DEACON_LOG=/var/log/deacon
-
-# Default intervals (in seconds)
-ENV PLUGIN_UPDATE_INTERVAL=86400
-ENV HEALTH_CHECK_INTERVAL=300
-ENV BACKUP_INTERVAL=3600
-
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    jq \
-    cron \
-    docker.io \
+    curl jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    requests \
-    schedule \
-    pyyaml \
-    docker \
-    prometheus-client
+# Install Docker CLI (for managing sub-instances)
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && \
+    apt-get install -y docker-ce-cli && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create directories
-RUN mkdir -p ${DEACON_HOME}/scripts \
-    ${DEACON_DATA} \
-    ${DEACON_LOG} \
-    ${DEACON_DATA}/backups \
-    ${DEACON_DATA}/metrics
+RUN pip install --no-cache-dir docker requests schedule pyyaml
 
-# Copy deacon scripts
-COPY deacon.py ${DEACON_HOME}/
-COPY plugins/ ${DEACON_HOME}/plugins/
-COPY scripts/ ${DEACON_HOME}/scripts/
+RUN mkdir -p /var/lib/deacon /var/log/deacon
 
-# Set executable permissions
-RUN chmod +x ${DEACON_HOME}/deacon.py
-RUN chmod +x ${DEACON_HOME}/scripts/*.sh
+COPY deacon.py /opt/deacon/deacon.py
+COPY scripts/ /opt/deacon/scripts/
+RUN chmod +x /opt/deacon/scripts/*.sh 2>/dev/null || true
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+WORKDIR /opt/deacon
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
-
-# Expose API port
-EXPOSE 8080
-
-# Expose metrics port for Prometheus
-EXPOSE 9090
-
-WORKDIR ${DEACON_HOME}
 
 ENTRYPOINT ["python", "deacon.py"]
