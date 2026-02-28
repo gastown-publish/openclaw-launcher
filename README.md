@@ -24,14 +24,29 @@ echo "your-kimi-api-key" | docker secret create kimi_key -
 echo "your-telegram-bot-token" | docker secret create telegram_bot_token -
 # ... create other secrets as needed
 
-# Deploy Normal tier
+# Deploy using Make (recommended)
+make up                    # Deploy all services
+make up-normal            # Deploy Normal tier only
+make up-privileged        # Deploy Privileged tier only
+
+# Or use docker-compose directly
 docker-compose --profile normal up -d
-
-# Deploy Privileged tier
 docker-compose --profile privileged up -d
-
-# Deploy everything
 docker-compose --profile all up -d
+```
+
+### Using Make
+
+A Makefile is provided for common operations:
+
+```bash
+make help              # Show all available commands
+make build             # Build all Docker images
+make secrets           # Interactively create Docker secrets
+make logs              # View logs from all services
+make shell-normal      # Open shell in Normal tier container
+make test              # Run validation tests
+make clean             # Clean up containers and volumes
 ```
 
 ## Architecture
@@ -76,6 +91,24 @@ docker-compose --profile all up -d
 | `gsearch-tool` | Custom Search API | Privileged | Yes |
 
 ## Configuration
+
+### Environment Setup
+
+Copy the example environment file and customize it:
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys and configuration
+```
+
+### Using Docker Compose Override
+
+For local customization, create a `docker-compose.override.yml`:
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+# Edit to add custom volumes, ports, or environment variables
+```
 
 ### Environment Variables
 

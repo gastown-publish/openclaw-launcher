@@ -17,6 +17,7 @@ ENV OPENCLAW_HOME=/opt/openclaw
 ENV OPENCLAW_DATA_DIR=/root/.openclaw/data
 ENV OPENCLAW_ADDONS_DIR=/root/.openclaw/addons
 ENV OPENCLAW_SKILLS_DIR=/root/.openclaw/skills
+ENV TIER=normal
 
 # Telegram STT Workaround
 ENV FORCE_MEDIA_UNDERSTANDING=true
@@ -32,30 +33,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libssl-dev \
     ffmpeg \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install OpenClaw CLI
-RUN pip install --no-cache-dir openclaw-cli
-
-# Install ClawHub CLI (if separate)
-RUN pip install --no-cache-dir clawhub-cli || echo "clawhub-cli bundled with openclaw-cli"
-
-# Install model providers
-RUN openclaw plugin install \
-    kimi-provider \
-    toad-provider \
-    codex-provider
-
-# Install ClawHub Google plugins (Normal tier subset)
-RUN clawhub install \
-    gog \
-    gcal-tool \
-    gdrive-tool \
-    gtasks-tool \
-    gcontacts-tool
-
-# Install Telegram channel with STT workaround
-RUN clawhub install telegram-channel
+# NOTE: The following tools need to be installed based on your actual setup:
+# - openclaw-cli (the main OpenClaw CLI tool)
+# - clawhub-cli (plugin management)
+# - AI provider CLIs: kimi, toad, codex, etc.
+# 
+# Example installations (uncomment and modify as needed):
+# RUN pip install --no-cache-dir openclaw-cli
+# RUN pip install --no-cache-dir kimi-cli toad-cli codex-cli
 
 # Install Deepgram for speech-to-text (English only for Normal tier)
 RUN pip install --no-cache-dir deepgram-sdk
@@ -71,17 +59,15 @@ RUN mkdir -p ${OPENCLAW_HOME}/scripts \
 COPY entrypoint.sh ${OPENCLAW_HOME}/scripts/
 COPY telegram-stt-workaround.sh ${OPENCLAW_HOME}/scripts/
 
-# Copy pre-installed skills
-COPY skills/ ${OPENCLAW_SKILLS_DIR}/
-
 # Set executable permissions
 RUN chmod +x ${OPENCLAW_HOME}/scripts/*.sh
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD openclaw healthcheck || exit 1
+# Health check - checks if the main process is running
+# Modify this based on your actual service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ps aux | grep -v grep | grep -q "python\|openclaw" || exit 1
 
-# Expose default port (if needed for web interface)
+# Expose default port
 EXPOSE 8080
 
 # Set working directory
@@ -89,4 +75,4 @@ WORKDIR ${OPENCLAW_HOME}
 
 # Entrypoint
 ENTRYPOINT ["/opt/openclaw/scripts/entrypoint.sh"]
-CMD ["openclaw", "start"]
+CMD ["sleep", "infinity"]

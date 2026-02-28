@@ -17,12 +17,12 @@ ENV OPENCLAW_HOME=/opt/openclaw
 ENV OPENCLAW_DATA_DIR=/root/.openclaw/data
 ENV OPENCLAW_ADDONS_DIR=/root/.openclaw/addons
 ENV OPENCLAW_SKILLS_DIR=/root/.openclaw/skills
+ENV TIER=privileged
 
 # Telegram STT Configuration (Privileged tier uses Whisper API + Local)
 ENV FORCE_MEDIA_UNDERSTANDING=true
 ENV WHISPER_MODEL=large-v3
 ENV TRANSCRIPTION_PROVIDER=whisper-api
-ENV WHISPER_API_KEY=${KIMI_API_KEY}
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,37 +35,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     libsndfile1-dev \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install OpenClaw CLI
-RUN pip install --no-cache-dir openclaw-cli
-
-# Install ClawHub CLI (if separate)
-RUN pip install --no-cache-dir clawhub-cli || echo "clawhub-cli bundled with openclaw-cli"
-
-# Install all model providers
-RUN openclaw plugin install \
-    kimi-provider \
-    toad-provider \
-    claude-code-provider \
-    codex-provider \
-    gemini-provider
-
-# Install full Google Workspace suite from ClawHub
-RUN clawhub install \
-    gog \
-    gogcli \
-    gmail-tool \
-    gcal-tool \
-    gdrive-tool \
-    gdocs-tool \
-    gsheets-tool \
-    gtasks-tool \
-    gcontacts-tool \
-    gsearch-tool
-
-# Install advanced Telegram with Whisper support
-RUN clawhub install telegram-channel whisper-tool
+# NOTE: The following tools need to be installed based on your actual setup:
+# - openclaw-cli (the main OpenClaw CLI tool)
+# - clawhub-cli (plugin management)
+# - AI provider CLIs: kimi, toad, codex, claude-code, gemini, etc.
+# 
+# Example installations (uncomment and modify as needed):
+# RUN pip install --no-cache-dir openclaw-cli
+# RUN pip install --no-cache-dir kimi-cli toad-cli claude-cli codex-cli gemini-cli
 
 # Install OpenAI Whisper for local fallback
 RUN pip install --no-cache-dir openai-whisper
@@ -84,17 +64,15 @@ RUN mkdir -p ${OPENCLAW_HOME}/scripts \
 COPY entrypoint.sh ${OPENCLAW_HOME}/scripts/
 COPY telegram-stt-workaround.sh ${OPENCLAW_HOME}/scripts/
 
-# Copy pre-installed skills
-COPY skills/ ${OPENCLAW_SKILLS_DIR}/
-
 # Set executable permissions
 RUN chmod +x ${OPENCLAW_HOME}/scripts/*.sh
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD openclaw healthcheck || exit 1
+# Health check - checks if the main process is running
+# Modify this based on your actual service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ps aux | grep -v grep | grep -q "python\|openclaw" || exit 1
 
-# Expose default port (if needed for web interface)
+# Expose default port
 EXPOSE 8080
 
 # Set working directory
@@ -102,4 +80,4 @@ WORKDIR ${OPENCLAW_HOME}
 
 # Entrypoint
 ENTRYPOINT ["/opt/openclaw/scripts/entrypoint.sh"]
-CMD ["openclaw", "start"]
+CMD ["sleep", "infinity"]

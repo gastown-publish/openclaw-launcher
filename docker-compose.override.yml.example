@@ -1,0 +1,63 @@
+# OpenClaw Launcher - Docker Compose Override Example
+# Copy this file to docker-compose.override.yml and customize as needed
+#
+# This file is automatically loaded by docker-compose and allows you to:
+# - Override environment variables
+# - Add custom volumes
+# - Change port mappings
+# - Add development tools
+
+version: '3.8'
+
+services:
+  openclaw-normal:
+    # Uncomment to use pre-built images instead of building locally
+    # image: ghcr.io/gastown-publish/openclaw-launcher/base:latest
+    
+    # Uncomment to add custom environment variables
+    # environment:
+    #   - CUSTOM_VAR=value
+    
+    # Uncomment to mount local directories for development
+    # volumes:
+    #   - ./custom-skills:/root/.openclaw/skills/custom
+    #   - ./config:/root/.openclaw/config
+    
+    # Uncomment to change resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 8G
+
+  openclaw-privileged:
+    # Uncomment to use pre-built images instead of building locally
+    # image: ghcr.io/gastown-publish/openclaw-launcher/privileged:latest
+    
+    # environment:
+    #   - CUSTOM_VAR=value
+    
+    # volumes:
+    #   - ./custom-skills:/root/.openclaw/skills/custom
+
+  deacon:
+    # Uncomment to use pre-built images
+    # image: ghcr.io/gastown-publish/openclaw-launcher/deacon:latest
+    
+    # Uncomment to expose Deacon API on host
+    # ports:
+    #   - "8080:8080"
+    #   - "9090:9090"  # Prometheus metrics
+    
+    # Uncomment to add custom alerting webhook
+    # environment:
+    #   - ALERT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+
+  # Development helper service
+  # Uncomment to add a debug container with common tools
+  # debug:
+  #   image: nicolaka/netshoot:latest
+  #   profiles:
+  #     - debug
+  #   network_mode: host
+  #   command: sleep infinity

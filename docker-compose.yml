@@ -161,9 +161,8 @@ services:
       - openclaw-data-privileged:/data/privileged:ro
     secrets:
       - deacon_api_key
-    depends_on:
-      - openclaw-normal
-      - openclaw-privileged
+    # Note: depends_on removed as containers may not exist with certain profiles
+    # Health checks will gracefully handle missing containers
 
   # Web UI for Launcher Management (Optional)
   launcher-ui:
