@@ -1,0 +1,229 @@
+# OpenClaw Launcher - Docker Compose Configuration
+# Supports both Normal and Privileged tiers
+
+version: '3.8'
+
+x-openclaw-common: &openclaw-common
+  restart: unless-stopped
+  networks:
+    - openclaw-network
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "100m"
+      max-file: "5"
+
+x-openclaw-secrets: &openclaw-secrets
+  secrets:
+    - kimi_key
+    - toad_key
+    - claude_key
+    - codex_key
+    - gemini_key
+    - google_oauth
+    - telegram_bot_token
+    - deepgram_key
+
+services:
+  # Normal Tier Instance Template
+  openclaw-normal:
+    <<: *openclaw-common
+    image: openclaw-launcher/base:latest
+    build:
+      context: ./docker/openclaw-base
+      dockerfile: Dockerfile
+    profiles:
+      - normal
+      - all
+    environment:
+      # Model Provider Keys (pre-configured)
+      - KIMI_API_KEY_FILE=/run/secrets/kimi_key
+      - TOAD_API_KEY_FILE=/run/secrets/toad_key
+      - CODEX_API_KEY_FILE=/run/secrets/codex_key
+      
+      # Google Workspace OAuth
+      - GOOGLE_OAUTH_FILE=/run/secrets/google_oauth
+      
+      # Telegram Configuration
+      - TELEGRAM_BOT_TOKEN_FILE=/run/secrets/telegram_bot_token
+      
+      # Speech-to-Text Configuration (Normal tier - Deepgram only)
+      - DEEPGRAM_API_KEY_FILE=/run/secrets/deepgram_key
+      - WHISPER_MODEL=base
+      - TRANSCRIPTION_PROVIDER=deepgram
+      
+      # Plugin Settings
+      - PLUGINS_AUTO_UPDATE=true
+      - CLAWHUB_AUTO_SYNC=true
+      - PLUGIN_UPDATE_INTERVAL=86400
+      
+      # Resource Limits (Normal tier)
+      - CPU_LIMIT=4
+      - MEMORY_LIMIT=16G
+      - DISK_LIMIT=50G
+      
+      # Feature Flags
+      - ENABLE_ADVANCED_GOOGLE_TOOLS=false
+      - ENABLE_LOCAL_WHISPER=false
+      - ENABLE_CLAUDE=false
+      - ENABLE_GEMINI=false
+    volumes:
+      - openclaw-data-normal:/root/.openclaw/data
+      - openclaw-addons-normal:/root/.openclaw/addons
+      - openclaw-skills-normal:/root/.openclaw/skills
+    <<: *openclaw-secrets
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 16G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+  # Privileged Tier Instance Template
+  openclaw-privileged:
+    <<: *openclaw-common
+    image: openclaw-launcher/privileged:latest
+    build:
+      context: ./docker/openclaw-privileged
+      dockerfile: Dockerfile
+    profiles:
+      - privileged
+      - all
+    environment:
+      # Model Provider Keys (pre-configured)
+      - KIMI_API_KEY_FILE=/run/secrets/kimi_key
+      - TOAD_API_KEY_FILE=/run/secrets/toad_key
+      - CLAUDE_CODE_KEY_FILE=/run/secrets/claude_key
+      - CODEX_API_KEY_FILE=/run/secrets/codex_key
+      - GEMINI_API_KEY_FILE=/run/secrets/gemini_key
+      
+      # Google Workspace OAuth
+      - GOOGLE_OAUTH_FILE=/run/secrets/google_oauth
+      
+      # Telegram Configuration
+      - TELEGRAM_BOT_TOKEN_FILE=/run/secrets/telegram_bot_token
+      
+      # Speech-to-Text Configuration (Privileged tier - Whisper API + Local)
+      - WHISPER_API_KEY=${KIMI_API_KEY}
+      - WHISPER_MODEL=large-v3
+      - TRANSCRIPTION_PROVIDER=whisper-api
+      - DEEPGRAM_API_KEY_FILE=/run/secrets/deepgram_key
+      
+      # Plugin Settings
+      - PLUGINS_AUTO_UPDATE=true
+      - CLAWHUB_AUTO_SYNC=true
+      - PLUGIN_UPDATE_INTERVAL=86400
+      
+      # Resource Limits (Privileged tier)
+      - CPU_LIMIT=8
+      - MEMORY_LIMIT=128G
+      - DISK_LIMIT=100G
+      
+      # Feature Flags
+      - ENABLE_ADVANCED_GOOGLE_TOOLS=true
+      - ENABLE_LOCAL_WHISPER=true
+      - ENABLE_CLAUDE=true
+      - ENABLE_GEMINI=true
+    volumes:
+      - openclaw-data-privileged:/root/.openclaw/data
+      - openclaw-addons-privileged:/root/.openclaw/addons
+      - openclaw-skills-privileged:/root/.openclaw/skills
+    <<: *openclaw-secrets
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 128G
+
+  # Deacon Service - Plugin Management & Monitoring
+  deacon:
+    <<: *openclaw-common
+    image: openclaw-launcher/deacon:latest
+    build:
+      context: ./deacon
+      dockerfile: Dockerfile
+    profiles:
+      - deacon
+      - all
+    environment:
+      - DEACON_MODE=daemon
+      - PLUGIN_UPDATE_INTERVAL=86400  # Daily updates
+      - HEALTH_CHECK_INTERVAL=300     # 5 minutes
+      - BACKUP_INTERVAL=3600          # Hourly backups
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+      - LOG_LEVEL=info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - deacon-data:/var/lib/deacon
+      - openclaw-data-normal:/data/normal:ro
+      - openclaw-data-privileged:/data/privileged:ro
+    secrets:
+      - deacon_api_key
+    depends_on:
+      - openclaw-normal
+      - openclaw-privileged
+
+  # Web UI for Launcher Management (Optional)
+  launcher-ui:
+    <<: *openclaw-common
+    image: openclaw-launcher/ui:latest
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    profiles:
+      - ui
+      - all
+    ports:
+      - "${LAUNCHER_UI_PORT:-3000}:3000"
+    environment:
+      - API_ENDPOINT=http://deacon:8080
+      - AUTH_ENABLED=true
+    depends_on:
+      - deacon
+
+networks:
+  openclaw-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  openclaw-data-normal:
+    driver: local
+  openclaw-addons-normal:
+    driver: local
+  openclaw-skills-normal:
+    driver: local
+  openclaw-data-privileged:
+    driver: local
+  openclaw-addons-privileged:
+    driver: local
+  openclaw-skills-privileged:
+    driver: local
+  deacon-data:
+    driver: local
+
+# Secrets Configuration
+# Create these with: docker secret create <name> <file>
+secrets:
+  kimi_key:
+    external: true
+  toad_key:
+    external: true
+  claude_key:
+    external: true
+  codex_key:
+    external: true
+  gemini_key:
+    external: true
+  google_oauth:
+    external: true
+  telegram_bot_token:
+    external: true
+  deepgram_key:
+    external: true
+  deacon_api_key:
+    external: true

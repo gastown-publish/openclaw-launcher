@@ -1,0 +1,49 @@
+name: telegram-utils
+description: Telegram utilities including voice message transcription workaround
+version: 1.0.0
+author: OpenClaw Team
+tier: both
+
+providers:
+  - telegram-channel
+  - whisper-tool
+
+configuration:
+  # Telegram STT Configuration
+  stt:
+    # Normal tier uses Deepgram (English only)
+    # Privileged tier uses Whisper API + Local fallback
+    provider: ${TRANSCRIPTION_PROVIDER:-deepgram}
+    model: ${WHISPER_MODEL:-base}
+    force_media_understanding: ${FORCE_MEDIA_UNDERSTANDING:-true}
+    
+    # API Keys (read from environment)
+    whisper_api_key: ${WHISPER_API_KEY}
+    deepgram_api_key: ${DEEPGRAM_API_KEY}
+
+actions:
+  - name: transcribe_voice
+    description: Transcribe a voice message to text
+    provider: whisper-tool
+    
+  - name: send_message
+    description: Send a message via Telegram
+    provider: telegram-channel
+    
+  - name: send_document
+    description: Send a document via Telegram
+    provider: telegram-channel
+
+# Workaround configuration for known Telegram STT bug
+workarounds:
+  telegram_stt_bug:
+    enabled: true
+    description: |
+      OpenClaw has a known bug where applyMediaUnderstanding function 
+      is never called during Telegram message processing. This workaround
+      patches the Telegram handler to force transcription of voice messages.
+    patch_file: media_understanding_patch.py
+    env_vars:
+      FORCE_MEDIA_UNDERSTANDING: "true"
+      WHISPER_MODEL: "base"
+      TRANSCRIPTION_PROVIDER: "deepgram"

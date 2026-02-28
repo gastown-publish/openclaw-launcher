@@ -1,0 +1,80 @@
+name: system-management
+description: System management and monitoring utilities
+version: 1.0.0
+author: OpenClaw Team
+tier: both
+
+configuration:
+  monitoring:
+    enabled: true
+    interval: 60  # seconds
+    
+  resource_limits:
+    normal:
+      cpu: 4
+      memory: "16G"
+      disk: "50G"
+    privileged:
+      cpu: 8
+      memory: "128G"
+      disk: "100G"
+
+actions:
+  - name: get_system_info
+    description: Get system information (CPU, memory, disk usage)
+    command: |
+      echo "=== System Information ==="
+      echo "CPU: $(nproc) cores"
+      echo "Memory: $(free -h | awk '/^Mem:/ {print $2}')"
+      echo "Disk: $(df -h / | awk 'NR==2 {print $2}')"
+      echo "Load: $(uptime | awk -F'load average:' '{print $2}')"
+      
+  - name: get_openclaw_status
+    description: Get OpenClaw service status
+    command: |
+      openclaw status 2>/dev/null || echo "OpenClaw not running"
+      
+  - name: list_plugins
+    description: List installed plugins
+    command: |
+      echo "=== OpenClaw Plugins ==="
+      openclaw plugin list 2>/dev/null || echo "Could not list plugins"
+      echo ""
+      echo "=== ClawHub Plugins ==="
+      clawhub list 2>/dev/null || echo "Could not list ClawHub plugins"
+      
+  - name: update_plugins
+    description: Update all plugins
+    command: |
+      echo "Updating OpenClaw plugins..."
+      openclaw plugin update --all
+      echo "Updating ClawHub plugins..."
+      clawhub update --all
+      
+  - name: check_health
+    description: Check system health
+    command: |
+      echo "=== Health Check ==="
+      
+      # Check OpenClaw
+      if pgrep -f "openclaw" > /dev/null; then
+        echo "✓ OpenClaw is running"
+      else
+        echo "✗ OpenClaw is not running"
+      fi
+      
+      # Check disk space
+      DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+      if [ "$DISK_USAGE" -lt 80 ]; then
+        echo "✓ Disk usage: ${DISK_USAGE}%"
+      else
+        echo "✗ Disk usage critical: ${DISK_USAGE}%"
+      fi
+      
+      # Check memory
+      MEM_USAGE=$(free | awk '/^Mem:/ {printf("%.0f", $3/$2 * 100)}')
+      if [ "$MEM_USAGE" -lt 90 ]; then
+        echo "✓ Memory usage: ${MEM_USAGE}%"
+      else
+        echo "✗ Memory usage critical: ${MEM_USAGE}%"
+      fi
