@@ -1,0 +1,68 @@
+name: Auto Assign Issues and PRs
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request:
+    types: [opened, labeled]
+
+jobs:
+  auto-assign:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Auto-assign based on labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labelAssignments = {
+              'core-runtime': ['polecat-1'],
+              'ui-ux': ['polecat-2'],
+              'infrastructure': ['polecat-3'],
+              'integration': ['polecat-4'],
+              'security': ['polecat-4'],
+              'testing': ['polecat-4'],
+              'good first issue': ['community-manager'],
+              'priority: critical': ['mayor', 'tech-lead']
+            };
+            
+            const item = context.payload.issue || context.payload.pull_request;
+            const labels = item.labels.map(l => l.name);
+            
+            let assigneesToAdd = [];
+            for (const label of labels) {
+              if (labelAssignments[label]) assigneesToAdd.push(...labelAssignments[label]);
+            }
+            
+            const cleanAssignees = [...new Set(assigneesToAdd)];
+            
+            if (cleanAssignees.length > 0) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: item.number,
+                assignees: cleanAssignees
+              });
+            }
+
+      - name: Round-robin assignment for unassigned issues
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (issue.assignees && issue.assignees.length > 0) return;
+            
+            // Simple round-robin based on issue number
+            const teamMembers = ['polecat-1', 'polecat-2', 'polecat-3', 'polecat-4'];
+            const nextAssignee = teamMembers[issue.number % teamMembers.length];
+            
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: [nextAssignee]
+            });

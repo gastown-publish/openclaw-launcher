@@ -1,0 +1,63 @@
+name: PR Template Enforcement
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check-pr-template:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Check PR description
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            
+            const requiredSections = ['## Description', '## Type of Change', '## Testing', '## Checklist'];
+            const missingSections = requiredSections.filter(s => !body.includes(s));
+            
+            const checkboxes = [...body.matchAll(/- \[([ xX])\]/g)];
+            const checkedCount = checkboxes.filter(m => m[1].toLowerCase() === 'x').length;
+            const totalCount = checkboxes.length;
+            
+            let comment = '';
+            let shouldComment = false;
+            
+            if (missingSections.length > 0) {
+              comment += `## ⚠️ Missing Required Sections\n\n`;
+              comment += `Please add: ${missingSections.join(', ')}\n\n`;
+              shouldComment = true;
+            }
+            
+            if (totalCount > 0 && checkedCount < totalCount * 0.5) {
+              comment += `## ⚠️ Incomplete Checklist\n\n`;
+              comment += `Only ${checkedCount}/${totalCount} items checked.\n\n`;
+              shouldComment = true;
+            }
+            
+            if (!body.match(/(fixes|closes|resolves|relates to) #(\d+)/i)) {
+              comment += `## ℹ️ No Linked Issues\n\n`;
+              comment += `Consider linking related issues: Fixes #123\n\n`;
+              shouldComment = true;
+            }
+            
+            if (shouldComment) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `## PR Template Enforcement\n\n${comment}`
+              });
+              
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['needs: template update']
+              });
+            }

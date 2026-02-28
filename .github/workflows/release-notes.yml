@@ -1,0 +1,163 @@
+name: Generate Release Notes
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., v1.2.3)'
+        required: true
+        type: string
+
+jobs:
+  generate-release-notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Generate release notes
+        id: notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ github.event.inputs.version || github.ref_name }}';
+            
+            // Get previous tag
+            const tags = await github.rest.git.listMatchingRefs({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'tags/'
+            });
+            
+            const previousTag = tags.data
+              .map(t => t.ref.replace('refs/tags/', ''))
+              .filter(t => t !== version)
+              .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0];
+            
+            // Get commits between tags
+            let commits = [];
+            if (previousTag) {
+              const comparison = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: previousTag,
+                head: version
+              });
+              commits = comparison.data.commits;
+            }
+            
+            // Categorize commits
+            const categories = {
+              features: [],
+              fixes: [],
+              performance: [],
+              docs: [],
+              refactor: [],
+              tests: [],
+              chore: [],
+              other: []
+            };
+            
+            const typeRegex = /^(feat|fix|perf|docs|refactor|test|chore)(\(.+\))?:/;
+            
+            for (const commit of commits) {
+              const message = commit.commit.message.split('\n')[0];
+              const match = message.match(typeRegex);
+              
+              if (match) {
+                const type = match[1];
+                const cleanMessage = message.replace(typeRegex, '').trim();
+                const entry = `- ${cleanMessage} (@${commit.author?.login || 'unknown'})`;
+                
+                switch(type) {
+                  case 'feat': categories.features.push(entry); break;
+                  case 'fix': categories.fixes.push(entry); break;
+                  case 'perf': categories.performance.push(entry); break;
+                  case 'docs': categories.docs.push(entry); break;
+                  case 'refactor': categories.refactor.push(entry); break;
+                  case 'test': categories.tests.push(entry); break;
+                  case 'chore': categories.chore.push(entry); break;
+                  default: categories.other.push(entry);
+                }
+              } else {
+                categories.other.push(`- ${message}`);
+              }
+            }
+            
+            // Build release notes
+            let releaseNotes = `# 🚀 Release ${version}\n\n`;
+            
+            if (previousTag) {
+              releaseNotes += `## Changes since ${previousTag}\n\n`;
+            }
+            
+            if (categories.features.length > 0) {
+              releaseNotes += `## ✨ Features\n${categories.features.join('\n')}\n\n`;
+            }
+            if (categories.fixes.length > 0) {
+              releaseNotes += `## 🐛 Bug Fixes\n${categories.fixes.join('\n')}\n\n`;
+            }
+            if (categories.performance.length > 0) {
+              releaseNotes += `## ⚡ Performance\n${categories.performance.join('\n')}\n\n`;
+            }
+            if (categories.docs.length > 0) {
+              releaseNotes += `## 📚 Documentation\n${categories.docs.join('\n')}\n\n`;
+            }
+            if (categories.refactor.length > 0) {
+              releaseNotes += `## 🔨 Refactoring\n${categories.refactor.join('\n')}\n\n`;
+            }
+            if (categories.tests.length > 0) {
+              releaseNotes += `## 🧪 Tests\n${categories.tests.join('\n')}\n\n`;
+            }
+            if (categories.chore.length > 0) {
+              releaseNotes += `## 🧹 Maintenance\n${categories.chore.join('\n')}\n\n`;
+            }
+            if (categories.other.length > 0) {
+              releaseNotes += `## 📝 Other Changes\n${categories.other.join('\n')}\n\n`;
+            }
+            
+            // Add contributors section
+            const contributors = [...new Set(commits.map(c => c.author?.login).filter(Boolean))];
+            if (contributors.length > 0) {
+              releaseNotes += `## 👥 Contributors\n\n`;
+              releaseNotes += `Thanks to ${contributors.map(c => `@${c}`).join(', ')} for their contributions!\n\n`;
+            }
+            
+            if (previousTag) {
+              releaseNotes += `---\n\n`;
+              releaseNotes += `[Full Changelog](${context.payload.repository?.html_url}/compare/${previousTag}...${version})\n`;
+            }
+            
+            core.setOutput('RELEASE_NOTES', releaseNotes);
+            
+            // Write to file for debugging
+            const fs = require('fs');
+            fs.writeFileSync('RELEASE_NOTES.md', releaseNotes);
+      
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const releaseNotes = fs.readFileSync('RELEASE_NOTES.md', 'utf8');
+            const version = '${{ github.event.inputs.version || github.ref_name }}';
+            
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: version,
+              name: `Release ${version}`,
+              body: releaseNotes,
+              draft: false,
+              prerelease: version.includes('-') || version.includes('alpha') || version.includes('beta')
+            });

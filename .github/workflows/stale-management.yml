@@ -1,0 +1,168 @@
+name: Stale Issue and PR Management
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2:00 AM UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual changes)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+jobs:
+  stale-management:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Process stale issues and PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dryRun = '${{ github.event.inputs.dry_run }}' === 'true';
+            
+            const config = {
+              issues: {
+                staleDays: 60,
+                closeDays: 14,
+                staleLabel: 'stale',
+                exemptLabels: ['pinned', 'security', 'in-progress', 'epic'],
+                staleComment: `## ⚠️ This issue has been marked as stale\n\nThis issue has not had any activity in the last 60 days. It will be automatically closed in 14 days if no further activity occurs.\n\nTo keep this issue open, please add a comment or remove the \`stale\` label.`,
+                closeComment: `## 🔒 This issue has been closed due to inactivity\n\nThis issue was automatically closed because it has been stale for 14 days.`
+              },
+              prs: {
+                staleDays: 30,
+                closeDays: 14,
+                staleLabel: 'stale',
+                exemptLabels: ['pinned', 'in-progress', 'waiting-for-review'],
+                staleComment: `## ⚠️ This pull request has been marked as stale\n\nThis PR has not had any activity in the last 30 days. It will be automatically closed in 14 days if no further activity occurs.`,
+                closeComment: `## 🔒 This pull request has been closed due to inactivity\n\nThis PR was automatically closed because it has been stale for 14 days.`
+              }
+            };
+            
+            if (dryRun) console.log('=== DRY RUN MODE - No changes will be made ===\n');
+            
+            const now = new Date();
+            
+            // Process issues
+            console.log('Processing issues...');
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            
+            for (const issue of issues) {
+              if (issue.pull_request) continue; // Skip PRs
+              
+              const labels = issue.labels.map(l => l.name);
+              if (config.issues.exemptLabels.some(l => labels.includes(l))) continue;
+              
+              const lastUpdated = new Date(issue.updated_at);
+              const daysSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60 * 24);
+              
+              const isStale = labels.includes(config.issues.staleLabel);
+              
+              if (!isStale && daysSinceUpdate > config.issues.staleDays) {
+                console.log(`Marking issue #${issue.number} as stale (${Math.round(daysSinceUpdate)} days old)`);
+                
+                if (!dryRun) {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    labels: [config.issues.staleLabel]
+                  });
+                  
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    body: config.issues.staleComment
+                  });
+                }
+              } else if (isStale && daysSinceUpdate > (config.issues.staleDays + config.issues.closeDays)) {
+                console.log(`Closing stale issue #${issue.number}`);
+                
+                if (!dryRun) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    body: config.issues.closeComment
+                  });
+                  
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    state: 'closed'
+                  });
+                }
+              }
+            }
+            
+            // Process PRs
+            console.log('\nProcessing pull requests...');
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            
+            for (const pr of prs) {
+              const labels = pr.labels.map(l => l.name);
+              if (config.prs.exemptLabels.some(l => labels.includes(l))) continue;
+              
+              const lastUpdated = new Date(pr.updated_at);
+              const daysSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60 * 24);
+              
+              const isStale = labels.includes(config.prs.staleLabel);
+              
+              if (!isStale && daysSinceUpdate > config.prs.staleDays) {
+                console.log(`Marking PR #${pr.number} as stale (${Math.round(daysSinceUpdate)} days old)`);
+                
+                if (!dryRun) {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    labels: [config.prs.staleLabel]
+                  });
+                  
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    body: config.prs.staleComment
+                  });
+                }
+              } else if (isStale && daysSinceUpdate > (config.prs.staleDays + config.prs.closeDays)) {
+                console.log(`Closing stale PR #${pr.number}`);
+                
+                if (!dryRun) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    body: config.prs.closeComment
+                  });
+                  
+                  await github.rest.pulls.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: pr.number,
+                    state: 'closed'
+                  });
+                }
+              }
+            }
+            
+            console.log('\nStale management complete!');
