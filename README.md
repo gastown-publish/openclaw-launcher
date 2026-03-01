@@ -316,6 +316,47 @@ actions:
    docker-compose logs openclaw-normal
    ```
 
+## Orchestrator (Hourly Cron)
+
+The orchestrator is a Kimi K2.5-driven agent that runs every hour via `openclaw cron`. It dispatches tasks to Claude Code AIs.
+
+### What It Does
+
+| Task | Description |
+|------|-------------|
+| **PR Review & Merge** | Scans GitHub repos for open PRs, reviews diffs using Claude Code AI, approves/merges or requests changes |
+| **Update Checks** | Checks for new versions of openclaw, claude-code, kimi-code, and the launcher repo |
+| **Session Maintenance** | Runs `openclaw sessions cleanup --all-agents --enforce` and reindexes memory |
+| **Memory-Aware Review** | Uses `openclaw memory search` to provide context when reviewing PRs |
+
+### Quick Start
+
+```bash
+# Start everything (gateway + watcher + orchestrator cron)
+./launch.sh
+
+# Or install just the cron job (gateway must be running)
+./launch.sh --cron-only
+
+# Manual run
+bash orchestrator/orchestrator.sh
+
+# Check cron status
+openclaw cron list
+```
+
+### Architecture
+
+```
+openclaw cron (every 1h)
+  └─> Kimi K2.5 (kimi-coding/k2p5) — brain/orchestrator
+       └─> Claude Code AIs — executor
+            ├─> Review PR diffs
+            ├─> Run tests
+            ├─> Approve & merge
+            └─> Check for updates
+```
+
 ## Contributing
 
 1. Fork the repository
